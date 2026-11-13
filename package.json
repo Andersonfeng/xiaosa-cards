@@ -1,0 +1,19 @@
+{
+  "name": "xiaosa-card-house",
+  "version": "1.0.0",
+  "private": true,
+  "description": "「潇洒纸牌屋」— 带管理后台与实时房间的 Web 纸牌游戏平台，内置锄大地、斗地主、东北刨幺",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node tests/run-all.mjs",
+    "test:smoke": "node tests/smoke.mjs",
+    "test:games": "node tests/allGamesSmoke.mjs",
+    "test:ui": "node tests/ui-check.mjs",
+    "test:ui-games": "node tests/games-ui-check.mjs"
+  }
+}
