@@ -74,8 +74,32 @@ test('德州扑克 fold ends the hand and awards the pot', () => {
   assert.equal(game.result.winnerSeats[0], 1);
   assert.equal(game.stacks[1], 1010);
   assert.equal(game.stacks[0], 990);
+  assert.equal(game.result.showdown, false);
+  assert.equal(game.result.showdownPlayers.length, 0);
+  assert.equal(game.result.entries.every((entry) => entry.holeCards.length === 0), true);
   const total = game.result.entries.reduce((sum, entry) => sum + entry.points, 0);
   assert.equal(total, 0);
+});
+
+test('德州扑克 showdown reveals every surviving hand and community cards', () => {
+  const game = texas.createGame(2, 0);
+  texas.act(game, 0, 'call');
+  texas.act(game, 1, 'check');
+  let guard = 0;
+  while (game.status === 'playing' && guard < 20) {
+    guard += 1;
+    const seat = game.currentSeat;
+    texas.act(game, seat, 'check');
+  }
+  assert.equal(game.status, 'finished');
+  assert.equal(game.result.showdown, true);
+  assert.equal(game.result.communityCards.length, 5);
+  assert.equal(game.result.showdownPlayers.length, 2);
+  for (const entry of game.result.showdownPlayers) {
+    assert.equal(entry.holeCards.length, 2);
+    assert.ok(entry.handName);
+    assert.equal(entry.bestFive.length, 5);
+  }
 });
 
 test('德州扑克 bots can complete hands without stalling', () => {

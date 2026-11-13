@@ -391,22 +391,29 @@ function finishGame(game, { showdown: didShowdown = false, winners = [], handRes
   for (const seat of order) {
     if (nets[seat] === nets[order[0]]) winnerSeats.push(seat);
   }
-  const entries = order.map((seat, index) => ({
-    seat,
-    place: index + 1,
-    cardsLeft: game.hands[seat]?.length || 0,
-    penalty: 0,
-    multiplier: 1,
-    points: Math.round(nets[seat] / 10),
-    won: winnerSeats.includes(seat),
-    role: handBySeat.get(seat)?.name || (didShowdown ? '已弃牌' : ''),
-    label: `${nets[seat] >= 0 ? '+' : ''}${nets[seat]} 筹码`,
-    chips: game.stacks[seat],
-    net: nets[seat],
-    handName: handBySeat.get(seat)?.name || null,
-    folded: game.folded[seat],
-    allIn: game.allIn[seat],
-  }));
+  const entries = order.map((seat, index) => {
+    const hand = handBySeat.get(seat);
+    return {
+      seat,
+      place: index + 1,
+      cardsLeft: game.hands[seat]?.length || 0,
+      penalty: 0,
+      multiplier: 1,
+      points: Math.round(nets[seat] / 10),
+      won: winnerSeats.includes(seat),
+      role: hand?.name || (didShowdown ? '已弃牌' : ''),
+      label: `${nets[seat] >= 0 ? '+' : ''}${nets[seat]} 筹码`,
+      chips: game.stacks[seat],
+      net: nets[seat],
+      handName: hand?.name || null,
+      holeCards: didShowdown
+        ? game.hands[seat].map((card) => publicCard(card, pokerRank(card)))
+        : [],
+      bestFive: hand?.cards || [],
+      folded: game.folded[seat],
+      allIn: game.allIn[seat],
+    };
+  });
   const pointDelta = entries.reduce((sum, entry) => sum + entry.points, 0);
   if (pointDelta !== 0) entries[0].points -= pointDelta;
   game.revealedSeats = didShowdown ? activeWithHands(game) : [];
@@ -418,6 +425,17 @@ function finishGame(game, { showdown: didShowdown = false, winners = [], handRes
     winType: didShowdown ? 'showdown' : 'fold',
     entries,
     showdown: didShowdown,
+    communityCards: didShowdown
+      ? game.community.map((card) => publicCard(card, pokerRank(card)))
+      : [],
+    showdownPlayers: didShowdown
+      ? handResults.map(({ seat, hand }) => ({
+          seat,
+          holeCards: game.hands[seat].map((card) => publicCard(card, pokerRank(card))),
+          handName: hand?.name || null,
+          bestFive: hand?.cards || [],
+        }))
+      : [],
     pot: game.totalBets.reduce((sum, value) => sum + value, 0),
     nextStarterSeat: (game.dealerSeat + 1) % game.playerCount,
     firstOutSeat: null,

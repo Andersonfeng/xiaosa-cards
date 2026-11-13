@@ -1292,7 +1292,7 @@ function roomListHTML() {
         <div class="room-info">
           <div class="room-title-line">
             <h3>${esc(room.name)}</h3>
-            ${room.status === 'playing' ? '<span class="pill pill-red">进行中</span>' : '<span class="pill pill-green"><span class="dot"></span>等待中</span>'}
+            ${room.retained ? '<span class="pill pill-gold">保留中</span>' : room.status === 'playing' ? '<span class="pill pill-red">进行中</span>' : '<span class="pill pill-green"><span class="dot"></span>等待中</span>'}
             ${hosting ? '<span class="pill pill-gold">我的牌桌</span>' : ''}
           </div>
           <div class="room-subline">
@@ -1730,7 +1730,7 @@ function waitingStage(room) {
         }</span>
         ${avatarHTML(player, { size: 'avatar' })}
         <h3>${esc(player.displayName)}${player.isYou ? ' · 你' : ''}</h3>
-        <p>${player.isBot ? '电脑玩家' : player.isHost ? '房主' : '玩家'}${!player.connected && !player.isBot ? ' · 离线' : ''}</p>
+        <p>${player.isBot ? '电脑玩家' : player.managed ? '托管中' : player.isHost ? '房主' : '玩家'}${!player.connected && !player.isBot && !player.managed ? ' · 离线' : ''}</p>
         ${
           room.isHost && !player.isYou && !player.isBot
             ? `<button class="btn btn-ghost btn-sm" type="button" data-action="kick-player" data-player-id="${player.id}">移出</button>`
@@ -1768,7 +1768,7 @@ function waitingStage(room) {
         room.isHost
           ? `<button class="btn btn-soft" type="button" data-action="add-bots" ${room.players.length >= room.maxPlayers ? 'disabled' : ''}>${icon('bot')} 补满电脑</button>
              <button class="btn btn-soft" type="button" data-action="remove-bot" ${!room.players.some((p) => p.isBot) ? 'disabled' : ''}>${icon('minus')} 移除电脑</button>
-             <button class="btn btn-gold" type="button" data-action="start-game" ${room.canStart && room.players.every((p) => p.isBot || p.connected) ? '' : 'disabled'}>
+             <button class="btn btn-gold" type="button" data-action="start-game" ${room.canStart && room.players.every((p) => p.isBot || p.managed || p.connected) ? '' : 'disabled'}>
                ${icon('play')} 开始牌局
              </button>`
           : `<span class="waiting-hint">等房主开局 · 你可以先聊两句</span>`
@@ -1914,13 +1914,13 @@ function seatHTML(room, player, position) {
         : `<span class="seat-bid">${bidValue} 分</span>`
       : '';
   const finished = Boolean(player.finished && !bidding);
-  return `<div class="seat seat--${position} ${isTurn ? 'is-turn' : ''} ${teamClass} ${roleClass} ${finished ? 'is-finished' : ''}">
+  return `<div class="seat seat--${position} ${isTurn ? 'is-turn' : ''} ${teamClass} ${roleClass} ${finished ? 'is-finished' : ''} ${player.managed ? 'is-managed' : ''}">
     <div class="seat-card">
       <div class="avatar-ring">${avatarHTML(player, { size: '' })}</div>
       <div class="seat-info">
-        <div class="seat-name">${esc(player.displayName)}${player.isHost ? ' <span class="seat-you">房主</span>' : ''} ${roleBadge}</div>
+        <div class="seat-name">${esc(player.displayName)}${player.isHost ? ' <span class="seat-you">房主</span>' : ''} ${player.managed ? '<span class="seat-role role-managed">托管</span>' : ''} ${roleBadge}</div>
         <div class="seat-sub">
-          <span>${finished ? '<span class="seat-offline">已出完</span>' : player.isBot ? '电脑' : player.connected ? '在线' : '<span class="seat-offline">离线</span>'}</span>
+          <span>${finished ? '<span class="seat-offline">已出完</span>' : player.isBot ? '电脑' : player.managed ? '电脑托管' : player.connected ? '在线' : '<span class="seat-offline">离线</span>'}</span>
           <span class="seat-count-inline">${count} 张</span>
           ${bidLabel}
           ${player.score ? `<span class="${player.score > 0 ? 'gold' : ''}">${player.score > 0 ? '+' : ''}${player.score}</span>` : ''}
@@ -2011,11 +2011,11 @@ function texasSeatHTML(room, player, position) {
   const cards = revealed
     ? state.holeCards.map((card) => cardHTML(card, { tiny: true })).join('')
     : '<span class="mini-card-back"></span><span class="mini-card-back"></span>';
-  return `<div class="seat seat--${position} texas-seat ${isTurn ? 'is-turn' : ''} ${folded ? 'is-folded' : ''}">
+  return `<div class="seat seat--${position} texas-seat ${isTurn ? 'is-turn' : ''} ${folded ? 'is-folded' : ''} ${player.managed ? 'is-managed' : ''}">
     <div class="seat-card">
       <div class="avatar-ring">${avatarHTML(player, { size: '' })}</div>
       <div class="seat-info">
-        <div class="seat-name">${esc(player.displayName)}${player.isHost ? ' <span class="seat-you">房主</span>' : ''}</div>
+        <div class="seat-name">${esc(player.displayName)}${player.isHost ? ' <span class="seat-you">房主</span>' : ''} ${player.managed ? '<span class="seat-role role-managed">托管</span>' : ''}</div>
         <div class="seat-sub">
           <span>${esc(state.stack ?? 0)} 筹码</span>
           ${state.bet ? `<span class="texas-bet">下注 ${state.bet}</span>` : ''}
@@ -2181,11 +2181,11 @@ function mahjongSeatHTML(room, player, position) {
   const game = room.gamePublic;
   const ps = player.publicState || game?.playerStates?.[player.seat] || {};
   const isTurn = room.status === 'playing' && (ps.isTurn || ps.isClaiming);
-  return `<div class="seat seat--${position} mahjong-seat ${isTurn ? 'is-turn' : ''}">
+  return `<div class="seat seat--${position} mahjong-seat ${isTurn ? 'is-turn' : ''} ${player.managed ? 'is-managed' : ''}">
     <div class="seat-card">
       <div class="avatar-ring">${avatarHTML(player, { size: '' })}</div>
       <div class="seat-info">
-        <div class="seat-name">${esc(player.displayName)} ${ps.dealer ? '<span class="seat-you">庄</span>' : ''} <span class="mj-wind">${esc(ps.wind || '')}</span></div>
+        <div class="seat-name">${esc(player.displayName)} ${ps.dealer ? '<span class="seat-you">庄</span>' : ''} <span class="mj-wind">${esc(ps.wind || '')}</span> ${player.managed ? '<span class="seat-role role-managed">托管</span>' : ''}</div>
         <div class="seat-sub">
           <span>${ps.handCount ?? 0} 张</span>
           <span>${(ps.melds || []).length} 副</span>
@@ -2383,15 +2383,17 @@ function roomSidebar(room) {
             return `<div class="player-row">
               ${avatarHTML(player, { size: 'avatar-sm' })}
               <div class="player-row-info">
-                <strong>${esc(player.displayName)} ${player.isHost ? '<span class="host-crown" title="房主">★</span>' : ''} ${player.isYou ? '<span class="gold" style="font-size:8px">你</span>' : ''} ${roleTag}</strong>
-                <p>${player.isBot ? '电脑玩家' : player.connected ? '在线' : '离线'}${playerMeta}</p>
+                <strong>${esc(player.displayName)} ${player.isHost ? '<span class="host-crown" title="房主">★</span>' : ''} ${player.isYou ? '<span class="gold" style="font-size:8px">你</span>' : ''} ${player.managed ? '<span class="mini-role role-managed">托管</span>' : ''} ${roleTag}</strong>
+                <p>${player.isBot ? '电脑玩家' : player.managed ? '电脑托管' : player.connected ? '在线' : '离线'}${playerMeta}</p>
               </div>
               <div class="player-row-side">
                 ${
                   room.status === 'waiting'
-                    ? player.ready
-                      ? '<span class="player-ready">已准备</span>'
-                      : '<span class="player-waiting">未准备</span>'
+                    ? `${player.ready ? '<span class="player-ready">已准备</span>' : '<span class="player-waiting">未准备</span>'}${
+                        number
+                          ? `<span class="player-score ${number < 0 ? 'negative' : ''}">${number > 0 ? '+' : ''}${number}</span>`
+                          : ''
+                      }`
                     : `<span class="player-score ${number < 0 ? 'negative' : ''}">${number > 0 ? '+' : ''}${number}</span>`
                 }
               </div>
@@ -2603,6 +2605,35 @@ function resultLayer(room, result) {
       <div class="eyebrow">ROUND ${room.roundNumber} · ${esc(roomGameName(room))} RESULT</div>
       <h2>${title}</h2>
       <p class="result-sub">${esc(subtitle || '本局结算如下')}</p>
+      ${
+        result.showdown && result.showdownPlayers?.length
+          ? `<div class="showdown-reveal">
+              <div class="showdown-board">
+                <span class="showdown-label">公共牌</span>
+                <div class="showdown-cards">${(result.communityCards || [])
+                  .map((card) => cardHTML(card, { tiny: true }))
+                  .join('')}</div>
+              </div>
+              <div class="showdown-list">
+                ${result.showdownPlayers
+                  .map((entry) => {
+                    const player = playerBySeat(room, entry.seat);
+                    return `<div class="showdown-player">
+                      <strong>${esc(player?.displayName || `座位 ${entry.seat + 1}`)}</strong>
+                      <div class="showdown-cards">${entry.holeCards
+                        .map((card) => cardHTML(card, { tiny: true }))
+                        .join('')}</div>
+                      <span class="showdown-hand">${esc(entry.handName || '—')}</span>
+                      <div class="showdown-best"><span>最佳5张</span>${(entry.bestFive || [])
+                        .map((card) => cardHTML(card, { tiny: true }))
+                        .join('')}</div>
+                    </div>`;
+                  })
+                  .join('')}
+              </div>
+            </div>`
+          : ''
+      }
       <div class="result-list">
         ${result.entries
           .map(
@@ -2883,26 +2914,34 @@ async function sendChat(form) {
 
 async function exitRoom() {
   const room = state.room;
-  if (room?.status === 'playing') {
-    toast('牌局进行中，暂时不能离开。完成本局后再走。', 'error');
-    return;
-  }
-  try {
-    if (room) {
-      await api(`/api/rooms/${room.code}/leave`, { method: 'POST' });
-    }
-  } catch (error) {
-    if (room?.status === 'playing') {
+  const performExit = async () => {
+    try {
+      if (room) await api(`/api/rooms/${room.code}/leave`, { method: 'POST' });
+    } catch (error) {
       toast(error.message, 'error');
       return;
     }
+    closeRoomSSE();
+    state.room = null;
+    state.homeRoomCode = null;
+    state.ui.selected.clear();
+    state.ui.mjSelected = null;
+    state.ui.texasRaise = '';
+    state.ui.chatDraft = '';
+    navigate('/lobby');
+  };
+
+  if (room?.status === 'playing') {
+    confirmDialog({
+      title: '离开牌桌',
+      message:
+        '离开后你的座位会由电脑托管，其他玩家可以继续牌局；你可以随时回到这个房间接管。若你是房主，房主会自动转给下一位在线玩家。确定离开？',
+      confirmText: '离开并托管',
+      onConfirm: performExit,
+    });
+    return;
   }
-  closeRoomSSE();
-  state.room = null;
-  state.homeRoomCode = null;
-  state.ui.selected.clear();
-  state.ui.chatDraft = '';
-  navigate('/lobby');
+  await performExit();
 }
 
 async function copyText(text, successMessage = '已复制') {

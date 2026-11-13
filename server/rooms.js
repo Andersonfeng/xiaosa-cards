@@ -10,6 +10,14 @@ const BOT_DELAY_MS = Math.max(
   80,
   Math.min(3000, Number(process.env.BOT_DELAY_MS || 850)),
 );
+const ROOM_RETENTION_MS = Math.max(
+  5000,
+  Number(process.env.ROOM_RETENTION_MS || 60_000),
+);
+const PLAYER_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.PLAYER_TIMEOUT_MS || 60_000),
+);
 
 export class RoomError extends Error {
   constructor(message, status = 400, code = 'ROOM_ERROR') {
@@ -78,7 +86,7 @@ export class RoomManager {
     const existingCode = this.userRooms.get(Number(user.id));
     if (existingCode) {
       const existing = this.rooms.get(existingCode);
-      if (existing && existing.status !== 'waiting') {
+      if (existing && existing.status === 'playing') {
         throw new RoomError('你正在牌局中，请先结束当前牌局', 409, 'ALREADY_IN_GAME');
       }
       if (existing) this._removePlayer(existing, user.id, { silent: true });
@@ -122,6 +130,10 @@ export class RoomManager {
       isBot: false,
       ready: false,
       connected: true,
+      left: false,
+      managed: false,
+      disconnectedAt: null,
+      disconnectTimer: null,
       joinedAt: now(),
       avatar: null,
     };
@@ -165,11 +177,94 @@ export class RoomManager {
     return player;
   }
 
+  requireActiveMember(room, userId) {
+    const player = this.requireMember(room, userId);
+    if (player.managed || player.left || !player.connected) {
+      throw new RoomError('座位正在电脑托管，请先回到牌桌接管', 409, 'SEAT_MANAGED');
+    }
+    return player;
+  }
+
   requireHost(room, userId) {
-    this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.hostId !== Number(userId)) {
       throw new RoomError('只有房主可以进行此操作', 403, 'NOT_HOST');
     }
+    return player;
+  }
+
+  _hasActiveHumans(room) {
+    return room.players.some(
+      (player) => !player.isBot && player.connected && !player.left && !player.managed,
+    );
+  }
+
+  _updateRoomActivity(room) {
+    if (this._hasActiveHumans(room)) this._cancelRoomExpiry(room);
+    else this._scheduleRoomExpiry(room);
+  }
+
+  _clearDisconnectTimer(player) {
+    if (player?.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = null;
+    }
+  }
+
+  _transferHostToActive(room, departingId) {
+    if (room.hostId !== Number(departingId)) return;
+    const index = room.players.findIndex(
+      (player) => !player.isBot && player.id === Number(departingId),
+    );
+    const count = room.players.length;
+    let next = null;
+    for (let offset = 1; offset <= count; offset += 1) {
+      const seat = index >= 0 ? (index + offset) % count : offset % count;
+      const candidate = room.players[seat];
+      if (candidate && !candidate.isBot && candidate.connected && !candidate.left && !candidate.managed) {
+        next = candidate;
+        break;
+      }
+    }
+    room.hostId = next?.id ?? null;
+    if (next) this._system(room, `${next.displayName} 成为新房主`);
+  }
+
+  _takeoverSeat(room, player) {
+    if (!player || player.isBot) return false;
+    const wasManaged = player.managed || player.left;
+    this._clearDisconnectTimer(player);
+    player.connected = true;
+    player.left = false;
+    player.managed = false;
+    player.disconnectedAt = null;
+    if (room.hostId == null) {
+      room.hostId = player.id;
+      this._system(room, `${player.displayName} 成为新房主`);
+    }
+    if (wasManaged) this._system(room, `${player.displayName} 回到牌桌，解除托管`);
+    this._cancelRoomExpiry(room);
+    this._scheduleBot(room);
+    return wasManaged;
+  }
+
+  _scheduleDisconnectTimeout(room, player) {
+    this._clearDisconnectTimer(player);
+    if (!player || player.isBot || player.left || player.connected) return;
+    player.disconnectTimer = setTimeout(() => {
+      player.disconnectTimer = null;
+      if (this.rooms.get(room.code) !== room) return;
+      if (!room.players.includes(player) || player.connected || player.left) return;
+      player.managed = true;
+      player.ready = true;
+      player.disconnectedAt = null;
+      if (room.hostId === player.id) this._transferHostToActive(room, player.id);
+      this._system(room, `${player.displayName} 超过 1 分钟未连接，进入托管`);
+      this._updateRoomActivity(room);
+      this._scheduleBot(room);
+      this._touch(room);
+    }, PLAYER_TIMEOUT_MS);
+    if (typeof player.disconnectTimer.unref === 'function') player.disconnectTimer.unref();
   }
 
   joinRoom(user, rawCode) {
@@ -178,7 +273,7 @@ export class RoomManager {
     if (room.players.some((player) => !player.isBot && player.id === Number(user.id))) {
       return room;
     }
-    if (room.status !== 'waiting') {
+    if (room.status !== 'waiting' && room.status !== 'finished') {
       throw new RoomError('牌局已经开始了，暂时无法加入', 409, 'GAME_IN_PROGRESS');
     }
     if (room.players.length >= room.maxPlayers) {
@@ -186,14 +281,28 @@ export class RoomManager {
     }
     if (this.userRooms.has(Number(user.id))) {
       const existing = this.getRoomForUser(user.id);
-      if (existing && existing.status !== 'waiting') {
+      if (existing && existing.status === 'playing') {
         throw new RoomError('你正在另一场牌局中', 409, 'ALREADY_IN_GAME');
       }
       if (existing) this._removePlayer(existing, user.id, { silent: true });
     }
+    const hadActive = this._hasActiveHumans(room);
+    this._cancelRoomExpiry(room);
+    if (room.status === 'finished') {
+      // A finished table can accept a new hand once someone joins again.
+      room.status = 'waiting';
+      room.game = null;
+      room.nextStarterSeat = 0;
+      for (const player of room.players) player.ready = false;
+      this._system(room, '牌局已结束，房间回到准备状态');
+    }
     room.players.push(this._makeHumanPlayer(user));
     this.userRooms.set(Number(user.id), room.code);
     this._system(room, `${user.display_name || user.username} 加入了房间`);
+    if (!hadActive || room.hostId == null) {
+      room.hostId = Number(user.id);
+      this._system(room, `${user.display_name || user.username} 成为新房主`);
+    }
     this._touch(room);
     return room;
   }
@@ -202,7 +311,7 @@ export class RoomManager {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
     if (room.status !== 'waiting') throw new RoomError('牌局进行中，无法更改准备状态', 409, 'BAD_STATE');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     player.ready = Boolean(ready);
     this._touch(room);
     return room;
@@ -274,7 +383,6 @@ export class RoomManager {
     }
     room.gameType = game.id;
     room.maxPlayers = capacity;
-    room.scoreboard = {};
     room.roundNumber = 0;
     room.nextStarterSeat = 0;
     this._system(room, `游戏切换为「${game.name}」，当前 ${room.players.length}/${capacity} 人`);
@@ -297,7 +405,7 @@ export class RoomManager {
     if (room.players.some((player) => !player.ready)) {
       throw new RoomError('还有玩家尚未准备', 409, 'NOT_ALL_READY');
     }
-    if (room.players.some((player) => !player.isBot && !player.connected)) {
+    if (room.players.some((player) => !player.isBot && !player.managed && !player.connected)) {
       throw new RoomError('有玩家离线，请等待重连或将其移出房间', 409, 'PLAYER_OFFLINE');
     }
     this._startRound(room);
@@ -361,7 +469,7 @@ export class RoomManager {
   play(userId, cardIds) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     if (room.game.status === 'bidding') throw new RoomError('请先完成叫地主', 409, 'BIDDING');
     const seat = room.players.indexOf(player);
@@ -384,7 +492,7 @@ export class RoomManager {
   pass(userId) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     const seat = room.players.indexOf(player);
     try {
@@ -409,7 +517,7 @@ export class RoomManager {
   bid(userId, value) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     if (room.game.status !== 'bidding') throw new RoomError('现在不是叫地主阶段', 409, 'NOT_BIDDING');
     const seat = room.players.indexOf(player);
@@ -445,7 +553,7 @@ export class RoomManager {
   action(userId, type, payload = {}) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     const engine = this._engine(room);
     if (!engine.action) throw new RoomError('当前玩法不支持这个操作', 400, 'NO_ACTION');
@@ -474,7 +582,7 @@ export class RoomManager {
   hint(userId) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     if (room.game.status !== 'playing') throw new RoomError('现在还不能出牌', 409, 'NOT_PLAYING');
     const seat = room.players.indexOf(player);
@@ -561,8 +669,21 @@ export class RoomManager {
   leaveRoom(userId) {
     const room = this.getRoomForUser(userId);
     if (!room) return null;
+    const player = this.findPlayer(room, userId);
+    if (!player) return room;
     if (room.status === 'playing') {
-      throw new RoomError('牌局进行中，暂时不能离开房间', 409, 'GAME_IN_PROGRESS');
+      if (player.left) return room;
+      this._clearDisconnectTimer(player);
+      player.left = true;
+      player.managed = true;
+      player.connected = false;
+      player.disconnectedAt = null;
+      if (room.hostId === player.id) this._transferHostToActive(room, player.id);
+      this._system(room, `${player.displayName} 离开牌桌，座位由电脑托管`);
+      this._updateRoomActivity(room);
+      this._scheduleBot(room);
+      this._touch(room);
+      return room;
     }
     this._removePlayer(room, userId, {});
     return room;
@@ -571,7 +692,10 @@ export class RoomManager {
   _removePlayer(room, userId, { kicked = false, silent = false } = {}) {
     const index = room.players.findIndex((player) => !player.isBot && player.id === Number(userId));
     if (index === -1) return;
+    const wasHost = room.hostId === Number(userId);
+    const wasPlaying = room.status === 'playing';
     const [player] = room.players.splice(index, 1);
+    this._clearDisconnectTimer(player);
     this.userRooms.delete(Number(userId));
     if (!silent) {
       this._system(room, `${player.displayName}${kicked ? ' 被房主移出房间' : ' 离开了房间'}`);
@@ -579,28 +703,74 @@ export class RoomManager {
 
     const humans = room.players.filter((item) => !item.isBot);
     if (humans.length === 0) {
-      this._destroyRoom(room);
-      return;
-    }
-    if (room.hostId === Number(userId)) {
-      room.hostId = humans[0].id;
-      this._system(room, `${humans[0].displayName} 成为新房主`);
-    }
-    if (room.status === 'finished') {
+      // Keep the room (and its per-room scoreboard) for a short grace period.
+      const bots = room.players.filter((item) => item.isBot);
+      for (const bot of bots) delete room.scoreboard[playerKey(bot)];
+      room.players = [];
+      room.hostId = null;
       room.status = 'waiting';
       room.game = null;
-      room.scoreboard = {};
-      room.roundNumber = 0;
+      room.nextStarterSeat = 0;
+      this._scheduleRoomExpiry(room);
+      this._system(room, '房间保留 1 分钟，等待玩家重新加入');
+      this._touch(room);
+      return;
+    }
+
+    if (wasHost) {
+      const ordered = [
+        ...room.players.slice(index),
+        ...room.players.slice(0, index),
+      ].filter((item) => !item.isBot);
+      const nextHuman =
+        ordered.find((item) => item.connected && !item.left && !item.managed) || null;
+      room.hostId = nextHuman?.id ?? null;
+      if (nextHuman) this._system(room, `${nextHuman.displayName} 成为新房主`);
+    }
+    if (room.status !== 'waiting') {
+      room.status = 'waiting';
+      room.game = null;
       room.nextStarterSeat = 0;
       for (const item of room.players) item.ready = false;
-      this._system(room, '牌局已结束，房间回到准备状态');
+      this._system(
+        room,
+        wasPlaying ? '房主离场，本局中止，房间回到准备状态' : '牌局已结束，房间回到准备状态',
+      );
     }
+    this._updateRoomActivity(room);
     this._touch(room);
+  }
+
+  _scheduleRoomExpiry(room) {
+    if (room.cleanupTimer) return;
+    room.expiresAt = Date.now() + ROOM_RETENTION_MS;
+    room.cleanupTimer = setTimeout(() => {
+      room.cleanupTimer = null;
+      if (this.rooms.get(room.code) !== room) return;
+      if (this._hasActiveHumans(room)) return;
+      this._destroyRoom(room);
+    }, ROOM_RETENTION_MS);
+    if (typeof room.cleanupTimer.unref === 'function') room.cleanupTimer.unref();
+  }
+
+  _cancelRoomExpiry(room) {
+    if (room.cleanupTimer) {
+      clearTimeout(room.cleanupTimer);
+      room.cleanupTimer = null;
+    }
+    room.expiresAt = null;
   }
 
   _destroyRoom(room) {
     if (room.botTimer) clearTimeout(room.botTimer);
+    if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
     room.botTimer = null;
+    room.cleanupTimer = null;
+    for (const player of room.players) {
+      if (player.isBot) continue;
+      this._clearDisconnectTimer(player);
+      this.userRooms.delete(player.id);
+    }
     this.rooms.delete(room.code);
     this.onLobbyChange();
     this.onChange(room);
@@ -619,7 +789,7 @@ export class RoomManager {
   chat(userId, text) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
-    const player = this.requireMember(room, userId);
+    const player = this.requireActiveMember(room, userId);
     const content = cleanText(text, 160);
     if (!content) throw new RoomError('消息不能为空', 400, 'EMPTY_MESSAGE');
     room.chat.push({
@@ -657,11 +827,29 @@ export class RoomManager {
     const room = this.rooms.get(String(code || '').toUpperCase());
     if (!room) return;
     const player = room.players.find((item) => !item.isBot && item.id === Number(userId));
-    if (!player || player.connected === connected) return;
-    player.connected = connected;
-    room.updatedAt = now();
-    this.onChange(room);
-    this.onLobbyChange();
+    if (!player) return;
+    if (connected) {
+      if (player.connected && !player.left && !player.managed) {
+        this._clearDisconnectTimer(player);
+        return;
+      }
+      this._takeoverSeat(room, player);
+      this._updateRoomActivity(room);
+      this._touch(room);
+      return;
+    }
+    this._clearDisconnectTimer(player);
+    player.connected = false;
+    if (player.left) {
+      player.managed = true;
+      this._updateRoomActivity(room);
+      this._touch(room);
+      return;
+    }
+    player.disconnectedAt = now();
+    if (!player.managed) this._scheduleDisconnectTimeout(room, player);
+    this._updateRoomActivity(room);
+    this._touch(room);
   }
 
   _scheduleBot(room) {
@@ -678,7 +866,7 @@ export class RoomManager {
       const actingSeat = engine.getActingSeat ? engine.getActingSeat(game) : game.currentSeat;
       if (actingSeat === null || actingSeat === undefined) return;
       const actingPlayer = room.players[actingSeat];
-      if (!actingPlayer || !actingPlayer.isBot) return;
+      if (!actingPlayer || (!actingPlayer.isBot && !actingPlayer.managed)) return;
       const expectedSeat = actingSeat;
       const expectedActionAt = game.lastAction?.at;
       const expectedPhase = game.phase;
@@ -715,7 +903,7 @@ export class RoomManager {
     if (!bidding && game.status !== 'playing') return;
     const seat = bidding ? game.biddingSeat : game.currentSeat;
     const player = room.players[seat];
-    if (!player || !player.isBot) return;
+    if (!player || (!player.isBot && !player.managed)) return;
     const expectedStatus = game.status;
     const expectedSeat = seat;
     const expectedActionAt = game.lastAction?.at;
@@ -843,6 +1031,8 @@ export class RoomManager {
       status: room.status,
       gameType: room.gameType,
       gameName: game?.name || room.gameType,
+      retained: !this._hasActiveHumans(room),
+      expiresAt: room.expiresAt || null,
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
     };
@@ -898,6 +1088,8 @@ export class RoomManager {
           avatar: item.avatar || null,
           ready: item.ready,
           connected: item.connected,
+          managed: Boolean(item.managed),
+          left: Boolean(item.left),
           seat: index,
           isHost: !item.isBot && item.id === room.hostId,
           isYou: !item.isBot && item.id === Number(userId),
