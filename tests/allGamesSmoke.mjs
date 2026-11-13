@@ -1,5 +1,5 @@
 /**
- * End-to-end smoke test for all three games against a running server.
+ * End-to-end smoke test for all five games against a running server.
  * Usage: node tests/allGamesSmoke.mjs
  *
  * Set BOT_DELAY_MS=120 when starting the server to make bot turns faster.
@@ -36,6 +36,8 @@ try {
     ['big-two', 4],
     ['dou-dizhu', 3],
     ['pao-yao', 4],
+    ['texas-holdem', 2],
+    ['guangdong-mahjong', 4],
   ];
 
   for (const [gameType, maxPlayers] of games) {
@@ -96,6 +98,49 @@ try {
         } else {
           await sleep(90);
         }
+      } else if (gameType === 'texas-holdem') {
+        if (room.gamePublic.currentSeat === room.you.seat) {
+          const actions = room.gamePublic.availableActions;
+          const type = actions?.canCheck ? 'check' : actions?.canCall ? 'call' : 'fold';
+          room = (
+            await request(`/api/rooms/${code}/action`, {
+              method: 'POST',
+              token: player.token,
+              body: { type, payload: {} },
+            })
+          ).room;
+        } else {
+          await sleep(90);
+        }
+      } else if (gameType === 'guangdong-mahjong') {
+        const game = room.gamePublic;
+        let type = null;
+        let payload = {};
+        if (game.phase === 'claiming' && game.claim?.currentSeat === room.you.seat) {
+          const options = game.claim.options;
+          if (options?.hu) type = 'hu';
+          else if (options?.gang) type = 'gang';
+          else if (options?.peng) type = 'peng';
+          else if (options?.chi) type = 'chi';
+          else type = 'pass';
+        } else if (game.phase === 'discard' && game.currentSeat === room.you.seat) {
+          if (game.canWin) type = 'hu';
+          else {
+            type = 'discard';
+            payload = { tileId: room.hand[0]?.id };
+          }
+        }
+        if (type) {
+          room = (
+            await request(`/api/rooms/${code}/action`, {
+              method: 'POST',
+              token: player.token,
+              body: { type, payload },
+            })
+          ).room;
+        } else {
+          await sleep(90);
+        }
       } else if (room.gamePublic.currentSeat === room.you.seat) {
         const hint = await request(`/api/rooms/${code}/hint`, {
           method: 'POST',
@@ -134,7 +179,7 @@ try {
       `${gameType} finished in ${Math.round((Date.now() - startedAt) / 1000)}s: ${result.headline} · ${result.detail}`,
     );
   }
-  log('三款游戏端到端烟测通过');
+  log('五款游戏端到端烟测通过');
 } catch (error) {
   console.error('烟测失败：', error.message);
   process.exitCode = 1;

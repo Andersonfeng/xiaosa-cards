@@ -367,6 +367,7 @@ export class RoomManager {
     const seat = room.players.indexOf(player);
     try {
       const engine = this._engine(room);
+      if (!engine.play) throw new RoomError('当前玩法不支持出牌操作', 400, 'NO_PLAY');
       const outcome = engine.play(room.game, seat, cardIds);
       this._system(room, this._messageForPlay(room, seat, outcome.combo));
       if (outcome.combo.bomb || outcome.combo.rocket) {
@@ -388,6 +389,7 @@ export class RoomManager {
     const seat = room.players.indexOf(player);
     try {
       const engine = this._engine(room);
+      if (!engine.pass) throw new RoomError('当前玩法不支持不要操作', 400, 'NO_PASS');
       const outcome = engine.pass(room.game, seat);
       this._system(room, `${player.displayName} 选择不要`);
       if (outcome.pointsAwarded > 0 && room.game.teamScores) {
@@ -440,6 +442,35 @@ export class RoomManager {
     }
   }
 
+  action(userId, type, payload = {}) {
+    const room = this.getRoomForUser(userId);
+    if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
+    const player = this.requireMember(room, userId);
+    if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
+    const engine = this._engine(room);
+    if (!engine.action) throw new RoomError('当前玩法不支持这个操作', 400, 'NO_ACTION');
+    const seat = room.players.indexOf(player);
+    try {
+      const outcome = engine.action(room.game, seat, type, payload);
+      const message = outcome.message || this._actionMessage(room, type, payload);
+      if (message) this._system(room, `${player.displayName} ${message}`);
+      this._completeAction(room);
+      return outcome;
+    } catch (error) {
+      this._raiseGameError(error);
+    }
+  }
+
+  _actionMessage(room, type, payload) {
+    if (room.gameType === 'texas-holdem') {
+      if (type === 'fold') return '弃牌';
+      if (type === 'check') return '过牌';
+      if (type === 'call') return '跟注';
+      if (type === 'raise') return `加注到 ${payload.amount ?? '—'}`;
+    }
+    return '';
+  }
+
   hint(userId) {
     const room = this.getRoomForUser(userId);
     if (!room) throw new RoomError('你还没有加入房间', 404, 'NOT_IN_ROOM');
@@ -447,8 +478,10 @@ export class RoomManager {
     if (room.status !== 'playing' || !room.game) throw new RoomError('牌局尚未开始', 409, 'BAD_STATE');
     if (room.game.status !== 'playing') throw new RoomError('现在还不能出牌', 409, 'NOT_PLAYING');
     const seat = room.players.indexOf(player);
-    if (room.game.currentSeat !== seat) throw new RoomError('还没有轮到你', 409, 'NOT_YOUR_TURN');
-    return this._engine(room).getHint(room.game, seat);
+    const engine = this._engine(room);
+    const actingSeat = engine.getActingSeat ? engine.getActingSeat(room.game) : room.game.currentSeat;
+    if (actingSeat !== seat) throw new RoomError('还没有轮到你', 409, 'NOT_YOUR_TURN');
+    return engine.getHint(room.game, seat);
   }
 
   _raiseGameError(error) {
@@ -483,7 +516,9 @@ export class RoomManager {
     const headline = result.headline || '本局结束';
     this._system(
       room,
-      `${headline}：${winnerNames || '胜方'} 获胜${result.detail ? ` · ${result.detail}` : ''}`,
+      winnerPlayers.length
+        ? `${headline}：${winnerNames} 获胜${result.detail ? ` · ${result.detail}` : ''}`
+        : `${headline}${result.detail ? ` · ${result.detail}` : ''}`,
     );
 
     try {
@@ -513,11 +548,13 @@ export class RoomManager {
       console.error('[room] 保存战绩失败', error);
     }
 
-    room.nextStarterSeat = Number.isInteger(result.firstOutSeat)
-      ? result.firstOutSeat
-      : Number.isInteger(result.winnerSeat)
-        ? result.winnerSeat
-        : room.nextStarterSeat;
+    room.nextStarterSeat = Number.isInteger(result.nextStarterSeat)
+      ? result.nextStarterSeat
+      : Number.isInteger(result.firstOutSeat)
+        ? result.firstOutSeat
+        : Number.isInteger(result.winnerSeat)
+          ? result.winnerSeat
+          : room.nextStarterSeat;
     this._touch(room);
   }
 
@@ -634,6 +671,46 @@ export class RoomManager {
     }
     if (room.status !== 'playing' || !room.game) return;
     const game = room.game;
+    const engine = this._engine(room);
+
+    if (typeof engine.botAction === 'function') {
+      if (game.status !== 'playing') return;
+      const actingSeat = engine.getActingSeat ? engine.getActingSeat(game) : game.currentSeat;
+      if (actingSeat === null || actingSeat === undefined) return;
+      const actingPlayer = room.players[actingSeat];
+      if (!actingPlayer || !actingPlayer.isBot) return;
+      const expectedSeat = actingSeat;
+      const expectedActionAt = game.lastAction?.at;
+      const expectedPhase = game.phase;
+      room.botTimer = setTimeout(() => {
+        room.botTimer = null;
+        if (this.rooms.get(room.code) !== room) return;
+        if (room.status !== 'playing' || !room.game) return;
+        if (room.game.status !== 'playing' || room.game.phase !== expectedPhase) return;
+        const currentActingSeat = engine.getActingSeat
+          ? engine.getActingSeat(room.game)
+          : room.game.currentSeat;
+        if (currentActingSeat !== expectedSeat) return;
+        if (room.game.lastAction?.at !== expectedActionAt) return;
+        try {
+          const move = engine.botAction(room.game, expectedSeat);
+          if (!move) return;
+          const outcome = engine.action(room.game, expectedSeat, move.type, move.payload);
+          const message = outcome.message || this._actionMessage(room, move.type, move.payload);
+          if (message) this._system(room, `${actingPlayer.displayName} ${message}`);
+          if (room.game.status === 'finished') {
+            this._finishRound(room);
+          } else {
+            this._touch(room);
+            this._scheduleBot(room);
+          }
+        } catch (error) {
+          console.error('[bot] 自动操作失败', error);
+        }
+      }, BOT_DELAY_MS + crypto.randomInt(0, Math.min(320, BOT_DELAY_MS)));
+      return;
+    }
+
     const bidding = game.status === 'bidding';
     if (!bidding && game.status !== 'playing') return;
     const seat = bidding ? game.biddingSeat : game.currentSeat;
@@ -789,7 +866,7 @@ export class RoomManager {
     const seat = room.players.indexOf(player);
     const gameInfo = GAME_MAP.get(room.gameType);
     const engine = this._engine(room);
-    const publicGame = room.game ? engine.getPublic(room.game) : null;
+    const publicGame = room.game ? engine.getPublic(room.game, seat) : null;
     const allReady = room.players.length >= 2 && room.players.every((item) => item.ready);
     const isDou = room.gameType === 'dou-dizhu';
     const isPao = room.gameType === 'pao-yao';
@@ -830,6 +907,7 @@ export class RoomManager {
           score: room.scoreboard[playerKey(item)] || 0,
           role,
           team: isPao ? index % 2 : null,
+          publicState: publicGame?.playerStates?.[index] || null,
         };
       }),
       hand: room.game ? engine.getHand(room.game, seat) : [],

@@ -454,6 +454,12 @@ async function handleApi(req, res, url) {
       return ok(res, roomPayload(room, user.id));
     }
 
+    if (actionPath === 'action' && method === 'POST') {
+      const body = await readJson(req);
+      roomManager.action(user.id, body.type, body.payload || {});
+      return ok(res, roomPayload(room, user.id));
+    }
+
     if (actionPath === 'hint' && method === 'POST') {
       const cardIds = roomManager.hint(user.id);
       return ok(res, { cardIds });

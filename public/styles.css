@@ -3742,7 +3742,7 @@ ol {
 .chat-log {
   display: flex;
   min-height: 150px;
-  max-height: 310px;
+  max-height: 260px;
   flex: 1;
   flex-direction: column;
   gap: 7px;
@@ -6675,5 +6675,912 @@ button.playing-card {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* =========================================================
+   TEXAS HOLD'EM
+   ========================================================= */
+
+.texas-table .texas-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(540px, 68%);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.texas-turn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border: 1px solid rgba(240, 212, 154, 0.2);
+  border-radius: 999px;
+  color: rgba(247, 241, 227, 0.82);
+  background: rgba(8, 30, 23, 0.62);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(6px);
+}
+
+.texas-turn.you {
+  color: var(--gold);
+  border-color: rgba(240, 212, 154, 0.45);
+}
+
+.texas-pot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  color: rgba(247, 241, 227, 0.7);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+}
+
+.texas-pot strong {
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.texas-community {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  min-height: 70px;
+}
+
+.community-slot {
+  width: 48px;
+  height: 68px;
+  border: 1px dashed rgba(240, 212, 154, 0.22);
+  border-radius: 6px;
+  background: rgba(8, 30, 23, 0.28);
+}
+
+.texas-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  color: rgba(247, 241, 227, 0.5);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.texas-last-action {
+  max-width: 100%;
+  color: rgba(247, 241, 227, 0.7);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.texas-seat .seat-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.texas-seat .dealer-button {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(240, 212, 154, 0.65);
+  border-radius: 50%;
+  color: #14231d;
+  background: var(--gold);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22);
+}
+
+.texas-seat .blind-tag {
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  padding: 1px 6px;
+  border: 1px solid rgba(240, 212, 154, 0.25);
+  border-radius: 999px;
+  color: rgba(240, 212, 154, 0.8);
+  background: rgba(8, 30, 23, 0.85);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.texas-bet {
+  color: var(--gold);
+}
+
+.texas-hole {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 5px;
+  min-height: 48px;
+  transform: scale(0.9);
+  transform-origin: 50% 0;
+}
+
+.texas-hole.is-folded {
+  opacity: 0.35;
+}
+
+.mini-card-back {
+  width: 34px;
+  height: 48px;
+  border: 1px solid rgba(240, 212, 154, 0.4);
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(45deg, rgba(240, 212, 154, 0.14) 0 2px, transparent 2px 7px),
+    linear-gradient(145deg, #1a4d3c, #0d3026);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+.texas-seat-tags {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  min-height: 16px;
+  margin-top: 2px;
+}
+
+.seat-allin {
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #2a160f;
+  background: #d8a84f;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.texas-hand-name {
+  color: rgba(247, 241, 227, 0.72);
+  font-size: 9px;
+}
+
+.texas-seat.is-folded .seat-card {
+  opacity: 0.55;
+}
+
+.texas-seat.is-folded .avatar-ring {
+  filter: grayscale(1);
+}
+
+.texas-hand-dock {
+  min-height: 0;
+}
+
+.texas-hand-area {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0 4px;
+}
+
+.texas-hole-large {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.texas-hole-large .playing-card {
+  --card-w: 62px;
+  --card-h: 86px;
+}
+
+.texas-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1;
+}
+
+.texas-fold {
+  color: #efb1a7;
+}
+
+.texas-raise-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: rgba(8, 30, 23, 0.26);
+}
+
+.texas-raise-box label {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.texas-raise-box input {
+  width: 76px;
+  padding: 6px 7px;
+  border: 1px solid rgba(240, 212, 154, 0.34);
+  border-radius: 6px;
+  color: var(--gold);
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+}
+
+.texas-raise-box input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(240, 212, 154, 0.14);
+}
+
+.texas-quick {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.texas-quick button {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  transition: 0.16s ease;
+}
+
+.texas-quick button:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: rgba(240, 212, 154, 0.45);
+}
+
+.texas-wait-note {
+  flex: 1;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.texas-history {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.texas-history div:first-child {
+  color: var(--ink);
+}
+
+/* =========================================================
+   GUANGDONG MAHJONG
+   ========================================================= */
+
+.mj-tile {
+  --tile-w: 40px;
+  --tile-h: 56px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--tile-w);
+  height: var(--tile-h);
+  padding: 0;
+  border: 1px solid rgba(28, 37, 32, 0.2);
+  border-radius: 5px;
+  color: #1a231f;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(243, 235, 216, 0.99));
+  box-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.8) inset,
+    0 5px 9px rgba(0, 0, 0, 0.22);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mj-tile::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(28, 37, 32, 0.07);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.mj-tile {
+  position: relative;
+}
+
+.mj-tile--small {
+  --tile-w: 31px;
+  --tile-h: 44px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mj-tile--tiny {
+  --tile-w: 22px;
+  --tile-h: 31px;
+  border-radius: 3px;
+  font-size: 9px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+}
+
+.mj-suit-W {
+  color: #1c5c45;
+}
+
+.mj-suit-T {
+  color: #24627e;
+}
+
+.mj-suit-B {
+  color: #9b463a;
+}
+
+.mj-honor {
+  color: #2a2a27;
+}
+
+.mj-honor.mj-red {
+  color: #b23a2e;
+}
+
+.mj-honor.mj-green {
+  color: #1e6749;
+}
+
+.mj-honor.mj-blue {
+  color: #2c5f8d;
+}
+
+.mj-tile.is-selected {
+  z-index: 4;
+  border-color: rgba(201, 161, 92, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(240, 212, 154, 0.55),
+    0 10px 18px rgba(0, 0, 0, 0.32);
+  transform: translateY(-10px);
+}
+
+.mj-tile.is-last {
+  border-color: rgba(240, 212, 154, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(240, 212, 154, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+button.mj-tile {
+  cursor: pointer;
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+
+button.mj-tile:hover {
+  border-color: rgba(201, 161, 92, 0.7);
+  transform: translateY(-5px);
+}
+
+.mj-back {
+  border-color: rgba(240, 212, 154, 0.35);
+  background:
+    repeating-linear-gradient(45deg, rgba(240, 212, 154, 0.12) 0 2px, transparent 2px 6px),
+    linear-gradient(145deg, #1a4d3c, #0d3026);
+}
+
+.mahjong-table .mahjong-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(600px, 64%);
+  transform: translate(-50%, -50%);
+}
+
+.mahjong-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mahjong-wall {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid rgba(240, 212, 154, 0.18);
+  border-radius: 999px;
+  color: rgba(247, 241, 227, 0.62);
+  background: rgba(8, 30, 23, 0.55);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.mahjong-wall strong {
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.mahjong-turn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border: 1px solid rgba(240, 212, 154, 0.16);
+  border-radius: 999px;
+  color: rgba(247, 241, 227, 0.74);
+  background: rgba(8, 30, 23, 0.55);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.mahjong-turn.you {
+  color: var(--gold);
+  border-color: rgba(240, 212, 154, 0.42);
+}
+
+.mahjong-round {
+  color: rgba(240, 212, 154, 0.55);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.mahjong-rivers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.mahjong-river {
+  min-height: 50px;
+  padding: 5px 7px 6px;
+  border: 1px solid rgba(240, 212, 154, 0.1);
+  border-radius: 7px;
+  background: rgba(8, 30, 23, 0.22);
+}
+
+.mahjong-river.is-you {
+  border-color: rgba(240, 212, 154, 0.24);
+  background: rgba(8, 30, 23, 0.34);
+}
+
+.mahjong-river-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: rgba(247, 241, 227, 0.46);
+  font-size: 8px;
+}
+
+.mahjong-river-head em {
+  color: rgba(240, 212, 154, 0.6);
+  font-style: normal;
+}
+
+.mahjong-river-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 70px;
+  overflow-y: auto;
+}
+
+.mahjong-empty {
+  color: rgba(247, 241, 227, 0.2);
+  font-size: 10px;
+}
+
+.mahjong-last {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(247, 241, 227, 0.55);
+  font-size: 9px;
+}
+
+.mahjong-last em {
+  color: rgba(247, 241, 227, 0.38);
+  font-style: normal;
+}
+
+.mahjong-seat .seat-card {
+  gap: 9px;
+}
+
+.mahjong-seat .mj-wind {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  margin-left: 3px;
+  border: 1px solid rgba(240, 212, 154, 0.35);
+  border-radius: 50%;
+  color: var(--gold);
+  font-size: 8px;
+}
+
+.mahjong-seat-melds {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 4px;
+  min-height: 8px;
+}
+
+.mj-meld {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 3px;
+  background: rgba(8, 30, 23, 0.32);
+}
+
+.mahjong-thinking {
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  animation: pulse 1.6s infinite;
+}
+
+.mahjong-hand-dock {
+  min-height: 0;
+}
+
+.mahjong-my-melds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+.mahjong-hand-area {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mahjong-hand {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 2px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.mahjong-hand .mj-tile {
+  --tile-w: 42px;
+  --tile-h: 58px;
+  font-size: 16px;
+}
+
+.mahjong-discard-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 108px;
+}
+
+.mahjong-discard-actions .btn {
+  width: 100%;
+}
+
+.mahjong-claim {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgba(240, 212, 154, 0.3);
+  border-radius: 9px;
+  background: rgba(8, 30, 23, 0.34);
+}
+
+.mahjong-claim-tile {
+  display: flex;
+}
+
+.mahjong-claim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mahjong-claim-actions .btn {
+  min-width: 44px;
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.mahjong-wait-note {
+  flex: 0 0 auto;
+  max-width: 150px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.role-wind {
+  color: var(--gold);
+  border-color: rgba(240, 212, 154, 0.28);
+}
+
+.role-fold {
+  color: #d9a39b;
+  border-color: rgba(215, 103, 93, 0.3);
+}
+
+.role-allin {
+  color: #2a160f;
+  border-color: transparent;
+  background: #d8a84f;
+}
+
+@media (max-width: 1100px) {
+  .mahjong-table .mahjong-center {
+    width: 70%;
+  }
+
+  .texas-table .texas-center {
+    width: 74%;
+  }
+
+  .mahjong-hand .mj-tile {
+    --tile-w: 36px;
+    --tile-h: 50px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 700px) {
+  .texas-table .texas-center {
+    top: 47%;
+    width: 82%;
+    gap: 6px;
+  }
+
+  .texas-pot strong {
+    font-size: 22px;
+  }
+
+  .texas-community {
+    gap: 3px;
+    min-height: 54px;
+  }
+
+  .community-slot,
+  .texas-community .playing-card.small {
+    --card-w: 36px;
+    --card-h: 52px;
+    width: 36px;
+    height: 52px;
+  }
+
+  .community-slot {
+    border-radius: 4px;
+  }
+
+  .texas-meta {
+    gap: 8px;
+    font-size: 8px;
+  }
+
+  .texas-hole {
+    transform: scale(0.72);
+    min-height: 36px;
+  }
+
+  .texas-seat .seat-sub {
+    font-size: 8px;
+  }
+
+  .texas-hand-area {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .texas-hole-large {
+    justify-content: center;
+  }
+
+  .texas-hole-large .playing-card {
+    --card-w: 48px;
+    --card-h: 67px;
+  }
+
+  .texas-actions {
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .texas-actions > .btn {
+    flex: 1;
+    min-width: 88px;
+  }
+
+  .texas-raise-box {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .texas-raise-box input {
+    flex: 1;
+    width: auto;
+  }
+
+  .texas-quick {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .texas-wait-note {
+    text-align: center;
+  }
+
+  .texas-seat .texas-hole {
+    display: none;
+  }
+
+  .mahjong-table .mahjong-center {
+    top: 63%;
+    width: 88%;
+    gap: 5px;
+  }
+
+  .mahjong-table .mahjong-topline,
+  .mahjong-table .mahjong-last {
+    display: none;
+  }
+
+  .mahjong-topline {
+    gap: 5px;
+    transform: scale(0.92);
+  }
+
+  .mahjong-wall strong {
+    font-size: 15px;
+  }
+
+  .mahjong-turn {
+    padding: 5px 8px;
+    font-size: 8px;
+  }
+
+  .mahjong-round {
+    font-size: 7px;
+  }
+
+  .mahjong-rivers {
+    gap: 3px;
+  }
+
+  .mahjong-river {
+    min-height: 42px;
+    padding: 4px;
+  }
+
+  .mahjong-river-head {
+    font-size: 7px;
+  }
+
+  .mahjong-river-tiles {
+    max-height: 72px;
+  }
+
+  .mahjong-river-tiles .mj-tile {
+    --tile-w: 17px;
+    --tile-h: 24px;
+    font-size: 7px;
+    border-radius: 2px;
+  }
+
+  .mahjong-last {
+    gap: 5px;
+    font-size: 8px;
+  }
+
+  .mahjong-seat .seat-card {
+    gap: 4px;
+    padding: 6px 7px;
+  }
+
+  .mahjong-seat-melds {
+    display: none;
+  }
+
+  .mahjong-hand-area {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .mahjong-hand {
+    justify-content: flex-start;
+    gap: 2px;
+    padding-top: 6px;
+  }
+
+  .mahjong-hand .mj-tile {
+    --tile-w: 27px;
+    --tile-h: 39px;
+    font-size: 10px;
+    border-radius: 3px;
+  }
+
+  .mahjong-discard-actions {
+    flex-direction: row;
+    min-width: 0;
+  }
+
+  .mahjong-discard-actions .btn {
+    flex: 1;
+  }
+
+  .mahjong-claim {
+    order: -1;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .mahjong-wait-note {
+    max-width: none;
+    text-align: center;
+  }
+
+  .mahjong-my-melds {
+    display: flex;
+    gap: 4px;
+    max-width: 100%;
+    overflow-x: auto;
   }
 }

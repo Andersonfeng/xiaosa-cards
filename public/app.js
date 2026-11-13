@@ -68,6 +68,8 @@ const state = {
     dealAnimate: false,
     modalOpen: false,
     lastFocused: null,
+    mjSelected: null,
+    texasRaise: '',
   },
 };
 
@@ -312,7 +314,13 @@ function sortHandClient(hand) {
 }
 
 function gameGlyph(gameId) {
-  return gameId === 'big-two' ? '♠' : gameId === 'dou-dizhu' ? '♣' : gameId === 'pao-yao' ? '♥' : '♦';
+  return {
+    'big-two': '♠',
+    'dou-dizhu': '♣',
+    'pao-yao': '♥',
+    'texas-holdem': '♦',
+    'guangdong-mahjong': '中',
+  }[gameId] || '♦';
 }
 
 function roomGameName(room) {
@@ -329,6 +337,14 @@ function isPaoYao(room) {
 
 function isDouDizhu(room) {
   return room?.gameType === 'dou-dizhu';
+}
+
+function isTexasHoldem(room) {
+  return room?.gameType === 'texas-holdem';
+}
+
+function isMahjong(room) {
+  return room?.gameType === 'guangdong-mahjong';
 }
 
 function gamePlayerRange(game) {
@@ -873,7 +889,7 @@ const DEMO_CARDS = [
 ];
 
 function renderLanding() {
-  document.title = '潇洒纸牌屋 · 三款经典纸牌';
+  document.title = '潇洒纸牌屋 · 五款经典纸牌';
   state.loginError = '';
   const loggedIn = Boolean(state.user);
   const portalGameHref = loggedIn ? '#/lobby' : '#/login/game';
@@ -902,7 +918,7 @@ function renderLanding() {
         <div class="eyebrow hero-kicker">GAME ROOM · HONG KONG / GUANGDONG</div>
         <h1>一桌好牌，<br /><em>等紧你埋位。</em></h1>
         <p class="hero-desc">
-          锄大地、斗地主、东北刨幺，一馆三味。开一间房，叫齐朋友，或者补几位电脑玩家——
+          锄大地、斗地主、东北刨幺、德州扑克、广东麻将，一屋五味。开一间房，叫齐朋友，或者补几位电脑玩家——
           二至四人，实时开局。牌要够大，心要够定。
         </p>
         <div class="hero-actions">
@@ -915,7 +931,7 @@ function renderLanding() {
         </div>
         <div class="hero-meta">
           <div><strong>2–4 人</strong><span>ROOM SIZE</span></div>
-          <div><strong>3 款</strong><span>GAME TYPES</span></div>
+          <div><strong>5 款</strong><span>GAME TYPES</span></div>
           <div><strong>实时</strong><span>LIVE TABLE</span></div>
         </div>
       </div>
@@ -929,7 +945,7 @@ function renderLanding() {
         </div>
         <div class="floating-chip one"><span class="chip-icon">♣</span> 2–4 人实时牌桌</div>
         <div class="floating-chip two"><span class="chip-icon">♦</span> 方块 3 先手</div>
-        <div class="floating-chip three"><span class="chip-icon">♠</span> 锄大地 · 斗地主 · 刨幺</div>
+        <div class="floating-chip three"><span class="chip-icon">♠</span> 五款经典 · 实时开局</div>
       </div>
     </section>
 
@@ -986,7 +1002,7 @@ function renderLogin(portal = 'game') {
     : {
         kicker: 'PLAYER LOUNGE',
         title: '埋位，<br /><em>打好呢副牌。</em>',
-        desc: '用管理员为你开通的账号登录，创建房间、邀请朋友，或者与电脑玩家即场开一局：锄大地、斗地主、东北刨幺。',
+        desc: '用管理员为你开通的账号登录，创建房间、邀请朋友，或者与电脑玩家即场开一局：锄大地、斗地主、东北刨幺、德州扑克、广东麻将。',
         quote: '「先出完手牌的人，才有资格讲下一局。」',
       };
 
@@ -1242,6 +1258,8 @@ function defaultGames() {
     { id: 'big-two', name: '锄大地', tagline: '广东 / 香港经典扑克', enabled: true, minPlayers: 2, maxPlayers: 4 },
     { id: 'dou-dizhu', name: '斗地主', tagline: '三人叫地主攻防', enabled: true, minPlayers: 3, maxPlayers: 3 },
     { id: 'pao-yao', name: '东北刨幺', tagline: '四人两副牌 · 对家协作', enabled: true, minPlayers: 4, maxPlayers: 4 },
+    { id: 'texas-holdem', name: '德州扑克', tagline: '盲注、全下与摊牌', enabled: true, minPlayers: 2, maxPlayers: 4 },
+    { id: 'guangdong-mahjong', name: '广东麻将', tagline: '四人 136 张 · 鸡平胡', enabled: true, minPlayers: 4, maxPlayers: 4 },
   ];
 }
 
@@ -1532,12 +1550,15 @@ function applyRoomState(room) {
 
   if (!sameRoom) {
     state.ui.selected.clear();
+    state.ui.mjSelected = null;
+    state.ui.texasRaise = '';
     state.ui.chatDraft = '';
   }
   const handIds = new Set((room.hand || []).map((card) => card.id));
   for (const id of [...state.ui.selected]) {
     if (!handIds.has(id)) state.ui.selected.delete(id);
   }
+  if (state.ui.mjSelected && !handIds.has(state.ui.mjSelected)) state.ui.mjSelected = null;
 
   if (sameRoom && nextAction && previousAction?.at !== nextAction.at) {
     if (
@@ -1550,6 +1571,8 @@ function applyRoomState(room) {
   }
   if (gameStarted) {
     state.ui.selected.clear();
+    state.ui.mjSelected = null;
+    state.ui.texasRaise = '';
     triggerDealAnimation();
   }
   if (
@@ -1573,12 +1596,18 @@ function applyRoomState(room) {
   }
 
   const bidding = isBidding(room);
-  const actionSeat = bidding ? room.gamePublic?.biddingSeat : room.gamePublic?.currentSeat;
+  const actionSeat = bidding
+    ? room.gamePublic?.biddingSeat
+    : room.gamePublic?.claim?.currentSeat ?? room.gamePublic?.currentSeat;
   document.title =
     room.status === 'playing' && actionSeat === room.you?.seat
       ? bidding
         ? '轮到你叫地主 · 潇洒纸牌屋'
-        : '轮到你出牌 · 潇洒纸牌屋'
+        : isTexasHoldem(room)
+          ? '轮到你下注 · 潇洒纸牌屋'
+          : isMahjong(room)
+            ? '轮到你摸打 · 潇洒纸牌屋'
+            : '轮到你出牌 · 潇洒纸牌屋'
       : `${room.name} · ${roomGameName(room)}`;
   if (state.route.name === 'room') renderRoom();
 }
@@ -1596,6 +1625,8 @@ function renderRoom() {
   const previousScrollTop = chatLog?.scrollTop || 0;
   const handScroller = $('.hand-scroller');
   const previousHandScroll = handScroller?.scrollLeft || 0;
+  const mahjongScroller = $('.mahjong-hand');
+  const previousMahjongScroll = mahjongScroller?.scrollLeft || 0;
 
   const awaiting = room.status === 'playing' || room.status === 'finished';
   app.innerHTML = `<div class="room-page" data-game="${esc(room.gameType)}">
@@ -1619,7 +1650,11 @@ function renderRoom() {
         ${
           room.status === 'waiting'
             ? `${waitingStage(room)}${waitingDock(room)}`
-            : `${playedStage(room)}${room.status === 'playing' ? handDock(room) : ''}`
+            : isTexasHoldem(room)
+              ? `${texasStage(room)}${room.status === 'playing' ? texasHandDock(room) : ''}`
+              : isMahjong(room)
+                ? `${mahjongStage(room)}${room.status === 'playing' ? mahjongHandDock(room) : ''}`
+                : `${playedStage(room)}${room.status === 'playing' ? handDock(room) : ''}`
         }
       </section>
       ${roomSidebar(room)}
@@ -1631,6 +1666,8 @@ function renderRoom() {
     requestAnimationFrame(() => {
       const nextScroller = $('.hand-scroller');
       if (nextScroller) nextScroller.scrollLeft = previousHandScroll;
+      const nextMahjong = $('.mahjong-hand');
+      if (nextMahjong) nextMahjong.scrollLeft = previousMahjongScroll;
     });
   }
   const nextChat = $('.chat-log');
@@ -1899,6 +1936,331 @@ function seatHTML(room, player, position) {
   </div>`;
 }
 
+/* ---------- Texas Hold'em table ---------- */
+
+const TEXAS_PHASES = {
+  preflop: '翻牌前',
+  flop: '翻牌',
+  turn: '转牌',
+  river: '河牌',
+  showdown: '摊牌',
+  finished: '牌局结束',
+};
+
+function texasActionLabel(room, action) {
+  if (!action) return '';
+  const player = playerBySeat(room, action.seat);
+  const who = player?.displayName || '';
+  if (action.type === 'fold') return `${who} 弃牌`;
+  if (action.type === 'check') return `${who} 过牌`;
+  if (action.type === 'call') return `${who} 跟注 ${action.amount ?? ''}`;
+  if (action.type === 'raise') return `${who} 加注到 ${action.to ?? ''}`;
+  if (action.type === 'street') return `进入${TEXAS_PHASES[action.street] || action.street}`;
+  return '';
+}
+
+function texasStage(room) {
+  const game = room.gamePublic;
+  if (!game) return '';
+  const layout = opponentLayout(room);
+  const lastAction = game.actions?.slice(-1)[0];
+  const actionCopy = texasActionLabel(room, lastAction);
+  const turnPlayer = game.currentSeat != null ? playerBySeat(room, game.currentSeat) : null;
+  const yourTurn = room.status === 'playing' && game.currentSeat === room.you.seat;
+  const turnLabel =
+    room.status === 'finished'
+      ? '本局结束'
+      : game.phase === 'showdown'
+        ? '摊牌中...'
+        : yourTurn
+          ? '轮到你行动'
+          : turnPlayer
+            ? `${turnPlayer.displayName} 正在思考...`
+            : '等待发牌';
+  return `<div class="felt-table texas-table">
+    ${layout.map(({ player, position }) => texasSeatHTML(room, player, position)).join('')}
+    <div class="texas-center">
+      <div class="texas-turn ${yourTurn ? 'you' : ''}"><span class="pulse"></span>${esc(turnLabel)}</div>
+      <div class="texas-pot"><span>POT</span><strong>${game.pot ?? 0}</strong></div>
+      <div class="texas-community">
+        ${Array.from({ length: 5 }, (_, index) => {
+          const card = game.communityCards?.[index];
+          return card
+            ? cardHTML(card, { small: true })
+            : '<span class="community-slot" aria-hidden="true"></span>';
+        }).join('')}
+      </div>
+      <div class="texas-meta">
+        <span>${esc(TEXAS_PHASES[game.phase] || game.phase)}</span>
+        <span>当前注 ${game.currentBet ?? 0}</span>
+        <span>盲注 ${game.smallBlind}/${game.bigBlind}</span>
+      </div>
+      ${actionCopy ? `<div class="texas-last-action">${esc(actionCopy)}</div>` : ''}
+    </div>
+    ${room.status === 'finished' && game.result ? resultLayer(room, game.result) : ''}
+  </div>`;
+}
+
+function texasSeatHTML(room, player, position) {
+  const game = room.gamePublic;
+  const state = player.publicState || game?.playerStates?.[player.seat] || {};
+  const isTurn = room.status === 'playing' && game?.currentSeat === player.seat;
+  const folded = Boolean(state.folded);
+  const allIn = Boolean(state.allIn);
+  const revealed = state.holeCards?.length > 0;
+  const cards = revealed
+    ? state.holeCards.map((card) => cardHTML(card, { tiny: true })).join('')
+    : '<span class="mini-card-back"></span><span class="mini-card-back"></span>';
+  return `<div class="seat seat--${position} texas-seat ${isTurn ? 'is-turn' : ''} ${folded ? 'is-folded' : ''}">
+    <div class="seat-card">
+      <div class="avatar-ring">${avatarHTML(player, { size: '' })}</div>
+      <div class="seat-info">
+        <div class="seat-name">${esc(player.displayName)}${player.isHost ? ' <span class="seat-you">房主</span>' : ''}</div>
+        <div class="seat-sub">
+          <span>${esc(state.stack ?? 0)} 筹码</span>
+          ${state.bet ? `<span class="texas-bet">下注 ${state.bet}</span>` : ''}
+        </div>
+      </div>
+      ${state.dealer ? '<span class="dealer-button">D</span>' : ''}
+      ${state.sb ? '<span class="blind-tag">SB</span>' : state.bb ? '<span class="blind-tag">BB</span>' : ''}
+    </div>
+    <div class="texas-hole ${folded ? 'is-folded' : ''}">${cards}</div>
+    <div class="texas-seat-tags">
+      ${folded ? '<span class="seat-pass">弃牌</span>' : ''}
+      ${allIn ? '<span class="seat-allin">全下</span>' : ''}
+      ${state.handName ? `<span class="texas-hand-name">${esc(state.handName)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function texasHandDock(room) {
+  const game = room.gamePublic;
+  if (!game) return '';
+  const actions = game.availableActions;
+  const yourTurn = room.status === 'playing' && game.currentSeat === room.you.seat && actions;
+  const ps = game.playerStates?.[room.you.seat] || {};
+  const hand = room.hand || [];
+  const busy = state.ui.actionBusy;
+  const inputValue = state.ui.texasRaise || actions?.minRaiseTo || '';
+  const statusText =
+    room.status !== 'playing'
+      ? '本局结束'
+      : yourTurn
+        ? '轮到你行动'
+        : `等待 ${esc(playerBySeat(room, game.currentSeat)?.displayName || '其他玩家')}`;
+  let actionHTML = `<div class="texas-wait-note">${statusText}</div>`;
+  if (yourTurn) {
+    const callLabel = actions.canCheck ? '过牌' : `跟注 ${actions.toCall}`;
+    actionHTML = `<div class="texas-actions">
+      <button class="btn btn-soft texas-fold" type="button" data-action="texas-action" data-type="fold" ${busy ? 'disabled' : ''}>弃牌</button>
+      <button class="btn btn-play" type="button" data-action="texas-action" data-type="${actions.canCheck ? 'check' : 'call'}" ${busy ? 'disabled' : ''}>${callLabel}</button>
+      ${
+        actions.canRaise
+          ? `<div class="texas-raise-box">
+              <label>加注到</label>
+              <input type="number" inputmode="numeric" data-raise-input min="${actions.minRaiseTo}" max="${actions.maxRaiseTo}" step="10" value="${escapeAttr(inputValue)}" />
+              <button class="btn btn-gold" type="button" data-action="texas-raise" ${busy ? 'disabled' : ''}>加注</button>
+            </div>
+            <div class="texas-quick">
+              <button type="button" data-action="texas-raise-quick" data-mode="half" ${busy ? 'disabled' : ''}>½ 池</button>
+              <button type="button" data-action="texas-raise-quick" data-mode="pot" ${busy ? 'disabled' : ''}>池底</button>
+              <button type="button" data-action="texas-raise-quick" data-mode="allin" ${busy ? 'disabled' : ''}>全下 ${actions.maxRaiseTo}</button>
+            </div>`
+          : ''
+      }
+    </div>`;
+  }
+  return `<div class="hand-dock texas-hand-dock ${state.ui.dealAnimate ? 'deal-animate' : ''}">
+    <div class="hand-head">
+      <div class="hand-player">
+        ${avatarHTML(room.you, { size: '' })}
+        <div class="hand-player-info">
+          <strong>${esc(room.you.displayName)} <span class="pill pill-gold" style="min-height:18px;padding:0 6px;font-size:8px">你</span>${ps.dealer ? ' <span class="seat-you">庄家</span>' : ps.sb ? ' <span class="seat-you">小盲</span>' : ps.bb ? ' <span class="seat-you">大盲</span>' : ''}</strong>
+          <span>筹码 ${ps.stack ?? 0} · 本轮下注 ${ps.bet ?? 0} · ${statusText}</span>
+        </div>
+      </div>
+      <div class="hand-tools">
+        <span class="muted">${esc(TEXAS_PHASES[game.phase] || game.phase)}</span>
+        <span class="gold">底池 ${game.pot ?? 0}</span>
+      </div>
+    </div>
+    <div class="texas-hand-area">
+      <div class="texas-hole-large">${hand.map((card) => cardHTML(card, { small: false })).join('')}</div>
+      ${actionHTML}
+    </div>
+  </div>`;
+}
+
+/* ---------- Guangdong Mahjong table ---------- */
+
+function mahjongTileHTML(tile, { small = false, tiny = false, selected = false, last = false, clickable = false, back = false } = {}) {
+  const classes = [
+    'mj-tile',
+    small ? 'mj-tile--small' : '',
+    tiny ? 'mj-tile--tiny' : '',
+    selected ? 'is-selected' : '',
+    last ? 'is-last' : '',
+    back ? 'mj-back' : '',
+    tile?.honor ? 'mj-honor' : '',
+    tile?.suit ? `mj-suit-${tile.suit}` : '',
+    tile?.red ? 'mj-red' : '',
+    tile?.color === 'green' ? 'mj-green' : '',
+    tile?.color === 'blue' ? 'mj-blue' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  if (back) return `<span class="${classes}" aria-hidden="true"></span>`;
+  const content = tile?.short || tile?.label || '';
+  if (clickable) {
+    return `<button class="${classes}" type="button" data-action="mahjong-tile" data-tile-id="${escapeAttr(tile.id)}" aria-pressed="${selected}" title="${escapeAttr(tile.label || '')}">${esc(content)}</button>`;
+  }
+  return `<span class="${classes}" title="${escapeAttr(tile?.label || '')}">${esc(content)}</span>`;
+}
+
+function mahjongMeldHTML(meld, { tiny = false } = {}) {
+  return `<span class="mj-meld">${(meld.tiles || []).map((tile) => mahjongTileHTML(tile, { tiny })).join('')}</span>`;
+}
+
+function mahjongStage(room) {
+  const game = room.gamePublic;
+  if (!game) return '';
+  const layout = opponentLayout(room);
+  const turnPlayer = game.currentSeat != null ? playerBySeat(room, game.currentSeat) : null;
+  const claimPlayer = game.claim?.currentSeat != null ? playerBySeat(room, game.claim.currentSeat) : null;
+  const yourTurn = room.status === 'playing' && game.phase === 'discard' && game.currentSeat === room.you.seat;
+  const yourClaim = room.status === 'playing' && game.phase === 'claiming' && game.claim?.currentSeat === room.you.seat;
+  const turnLabel =
+    room.status === 'finished'
+      ? '本局结束'
+      : game.phase === 'claiming'
+        ? yourClaim
+          ? '轮到你鸣牌'
+          : `${claimPlayer?.displayName || '玩家'} 正在考虑鸣牌...`
+        : yourTurn
+          ? '轮到你出牌'
+          : turnPlayer
+            ? `${turnPlayer.displayName} 正在思考...`
+            : '等待下一位';
+  const lastDiscard = game.lastDiscard;
+  return `<div class="felt-table mahjong-table">
+    ${layout.map(({ player, position }) => mahjongSeatHTML(room, player, position)).join('')}
+    <div class="mahjong-center">
+      <div class="mahjong-topline">
+        <div class="mahjong-wall"><span>余牌</span><strong>${game.wallCount ?? 0}</strong></div>
+        <div class="mahjong-turn ${yourTurn || yourClaim ? 'you' : ''}"><span class="pulse"></span>${esc(turnLabel)}</div>
+        <div class="mahjong-round">${esc(game.dealerWind || '东')}风局</div>
+      </div>
+      <div class="mahjong-rivers">
+        ${[0, 1, 2, 3]
+          .map((seat) => {
+            const player = playerBySeat(room, seat);
+            const river = game.discards?.[seat] || [];
+            const isLastSeat = lastDiscard?.seat === seat;
+            return `<div class="mahjong-river ${seat === room.you.seat ? 'is-you' : ''}">
+              <div class="mahjong-river-head"><span>${esc(player?.displayName || '')}</span><em>${esc(game.playerStates?.[seat]?.wind || '')}</em></div>
+              <div class="mahjong-river-tiles">
+                ${
+                  river.length
+                    ? river
+                        .map((tile) => mahjongTileHTML(tile, { tiny: true, last: isLastSeat && tile.id === lastDiscard?.tile?.id }))
+                        .join('')
+                    : '<span class="mahjong-empty">—</span>'
+                }
+              </div>
+            </div>`;
+          })
+          .join('')}
+      </div>
+      ${lastDiscard ? `<div class="mahjong-last"><span>最近打出</span>${mahjongTileHTML(lastDiscard.tile, { small: true, last: true })}<em>${esc(playerBySeat(room, lastDiscard.seat)?.displayName || '')}</em></div>` : ''}
+    </div>
+    ${room.status === 'finished' && game.result ? resultLayer(room, game.result) : ''}
+  </div>`;
+}
+
+function mahjongSeatHTML(room, player, position) {
+  const game = room.gamePublic;
+  const ps = player.publicState || game?.playerStates?.[player.seat] || {};
+  const isTurn = room.status === 'playing' && (ps.isTurn || ps.isClaiming);
+  return `<div class="seat seat--${position} mahjong-seat ${isTurn ? 'is-turn' : ''}">
+    <div class="seat-card">
+      <div class="avatar-ring">${avatarHTML(player, { size: '' })}</div>
+      <div class="seat-info">
+        <div class="seat-name">${esc(player.displayName)} ${ps.dealer ? '<span class="seat-you">庄</span>' : ''} <span class="mj-wind">${esc(ps.wind || '')}</span></div>
+        <div class="seat-sub">
+          <span>${ps.handCount ?? 0} 张</span>
+          <span>${(ps.melds || []).length} 副</span>
+        </div>
+      </div>
+      ${isTurn ? '<span class="mahjong-thinking">…</span>' : ''}
+    </div>
+    <div class="mahjong-seat-melds">
+      ${(ps.melds || []).map((meld) => mahjongMeldHTML(meld, { tiny: true })).join('')}
+    </div>
+  </div>`;
+}
+
+function mahjongHandDock(room) {
+  const game = room.gamePublic;
+  if (!game) return '';
+  const hand = [...(room.hand || [])].sort((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0));
+  const handIds = new Set(hand.map((tile) => tile.id));
+  if (state.ui.mjSelected && !handIds.has(state.ui.mjSelected)) state.ui.mjSelected = null;
+  const selected = state.ui.mjSelected;
+  const isDiscardTurn = room.status === 'playing' && game.phase === 'discard' && game.currentSeat === room.you.seat;
+  const isClaimTurn = room.status === 'playing' && game.phase === 'claiming' && game.claim?.currentSeat === room.you.seat;
+  const options = isClaimTurn ? game.claim?.options : null;
+  const yourState = game.playerStates?.[room.you.seat] || {};
+  const busy = state.ui.actionBusy;
+  const statusText = isClaimTurn
+    ? '轮到你决定吃碰杠胡'
+    : isDiscardTurn
+      ? '轮到你出牌'
+      : game.phase === 'claiming'
+        ? `等待 ${esc(playerBySeat(room, game.claim?.currentSeat)?.displayName || '其他玩家')} 鸣牌`
+        : `等待 ${esc(playerBySeat(room, game.currentSeat)?.displayName || '其他玩家')} 摸打`;
+  let actionHTML = `<div class="mahjong-wait-note">${statusText}</div>`;
+  if (isClaimTurn && options) {
+    actionHTML = `<div class="mahjong-claim">
+      <span class="mahjong-claim-tile">${mahjongTileHTML(game.claim.tile, { small: true, last: true })}</span>
+      <div class="mahjong-claim-actions">
+        ${options.hu ? `<button class="btn btn-gold" type="button" data-action="mahjong-claim" data-type="hu" ${busy ? 'disabled' : ''}>胡</button>` : ''}
+        ${options.gang ? `<button class="btn btn-soft" type="button" data-action="mahjong-claim" data-type="gang" ${busy ? 'disabled' : ''}>杠</button>` : ''}
+        ${options.peng ? `<button class="btn btn-soft" type="button" data-action="mahjong-claim" data-type="peng" ${busy ? 'disabled' : ''}>碰</button>` : ''}
+        ${options.chi ? `<button class="btn btn-soft" type="button" data-action="mahjong-claim" data-type="chi" ${busy ? 'disabled' : ''}>吃</button>` : ''}
+        <button class="btn btn-ghost" type="button" data-action="mahjong-claim" data-type="pass" ${busy ? 'disabled' : ''}>过</button>
+      </div>
+    </div>`;
+  } else if (isDiscardTurn) {
+    actionHTML = `<div class="mahjong-discard-actions">
+      <button class="btn btn-play" type="button" data-action="mahjong-discard" ${!selected || busy ? 'disabled' : ''}>${icon('play')} 打出</button>
+      ${game.canWin ? `<button class="btn btn-gold" type="button" data-action="mahjong-claim" data-type="hu" ${busy ? 'disabled' : ''}>自摸胡</button>` : ''}
+    </div>`;
+  }
+  return `<div class="hand-dock mahjong-hand-dock ${state.ui.dealAnimate ? 'deal-animate' : ''}">
+    <div class="hand-head">
+      <div class="hand-player">
+        ${avatarHTML(room.you, { size: '' })}
+        <div class="hand-player-info">
+          <strong>${esc(room.you.displayName)} <span class="pill pill-gold" style="min-height:18px;padding:0 6px;font-size:8px">你 · ${esc(yourState.wind || '')}家</span></strong>
+          <span>${statusText}</span>
+        </div>
+      </div>
+      <div class="hand-tools">
+        <span class="muted">余牌 ${game.wallCount ?? 0}</span>
+        <span class="muted">${hand.length} 张</span>
+        ${hand.length > 12 ? '<span class="hand-swipe-hint">左右滑动</span>' : ''}
+      </div>
+    </div>
+    ${(yourState.melds || []).length ? `<div class="mahjong-my-melds">${yourState.melds.map((meld) => mahjongMeldHTML(meld, { tiny: true })).join('')}</div>` : ''}
+    <div class="mahjong-hand-area">
+      <div class="mahjong-hand">
+        ${hand.map((tile) => mahjongTileHTML(tile, { clickable: isDiscardTurn, selected: selected === tile.id, last: game.lastDraw?.id === tile.id })).join('')}
+      </div>
+      ${actionHTML}
+    </div>
+  </div>`;
+}
+
 function handDock(room) {
   const game = room.gamePublic;
   const bidding = isBidding(room);
@@ -2002,13 +2364,27 @@ function roomSidebar(room) {
                 ? `<span class="mini-role role-${player.role === '地主' ? 'landlord' : 'farmer'}">${esc(player.role)}</span>`
                 : isPaoYao(room)
                   ? `<span class="mini-role role-team-${player.team === 0 ? 'a' : 'b'}">${esc(teamLabel(player.team))}</span>`
-                  : '';
+                  : isMahjong(room)
+                    ? `<span class="mini-role role-wind">${esc(player.publicState?.wind || '')}</span>`
+                    : isTexasHoldem(room) && player.publicState?.folded
+                      ? '<span class="mini-role role-fold">弃牌</span>'
+                      : isTexasHoldem(room) && player.publicState?.allIn
+                        ? '<span class="mini-role role-allin">全下</span>'
+                        : '';
             const number = Number(player.score ?? 0);
+            const playerMeta =
+              room.status === 'waiting'
+                ? ''
+                : isTexasHoldem(room)
+                  ? ` · ${player.publicState?.stack ?? 0} 筹码`
+                  : isMahjong(room)
+                    ? ` · ${player.publicState?.wind || ''}家 · ${player.publicState?.handCount ?? player.cardCount} 张`
+                    : ` · ${player.finished ? '已出完' : `${player.cardCount} 张`}`;
             return `<div class="player-row">
               ${avatarHTML(player, { size: 'avatar-sm' })}
               <div class="player-row-info">
                 <strong>${esc(player.displayName)} ${player.isHost ? '<span class="host-crown" title="房主">★</span>' : ''} ${player.isYou ? '<span class="gold" style="font-size:8px">你</span>' : ''} ${roleTag}</strong>
-                <p>${player.isBot ? '电脑玩家' : player.connected ? '在线' : '离线'}${room.status === 'waiting' ? '' : ` · ${player.finished ? '已出完' : `${player.cardCount} 张`}`}</p>
+                <p>${player.isBot ? '电脑玩家' : player.connected ? '在线' : '离线'}${playerMeta}</p>
               </div>
               <div class="player-row-side">
                 ${
@@ -2115,6 +2491,50 @@ function gameDataPanel(room) {
       </div>
     </section>`;
   }
+  if (isTexasHoldem(room)) {
+    const ps = game.playerStates?.[room.you.seat] || {};
+    const dealer = playerBySeat(room, game.dealerSeat);
+    const recent = (game.actions || []).slice(-5).reverse();
+    return `<section class="side-panel game-data-panel">
+      <div class="side-panel-head">
+        <h3>${icon('trophy')} 牌局信息</h3>
+        <span class="pill pill-gold">${esc(TEXAS_PHASES[game.phase] || game.phase)}</span>
+      </div>
+      <div class="game-data-body">
+        <div class="data-line"><span>底池</span><strong class="gold">${game.pot ?? 0}</strong></div>
+        <div class="data-line"><span>当前注</span><strong>${game.currentBet ?? 0}</strong></div>
+        <div class="data-line"><span>庄家</span><strong>${esc(dealer?.displayName || '—')}</strong></div>
+        <div class="data-line"><span>你的筹码</span><strong>${ps.stack ?? 0}</strong></div>
+        <div class="data-line"><span>盲注</span><strong>${game.smallBlind}/${game.bigBlind}</strong></div>
+        ${
+          recent.length
+            ? `<div class="texas-history">${recent
+                .map((action) => `<div>${esc(texasActionLabel(room, action))}</div>`)
+                .join('')}</div>`
+            : ''
+        }
+        <p class="data-note">单局结算 · 每 10 筹码折算 1 个房间积分。</p>
+      </div>
+    </section>`;
+  }
+  if (isMahjong(room)) {
+    const ps = game.playerStates?.[room.you.seat] || {};
+    const dealer = playerBySeat(room, game.dealerSeat);
+    return `<section class="side-panel game-data-panel">
+      <div class="side-panel-head">
+        <h3>${icon('trophy')} 牌局信息</h3>
+        <span class="pill pill-gold">${esc(game.status === 'finished' ? '已结束' : game.phase === 'claiming' ? '鸣牌中' : '进行中')}</span>
+      </div>
+      <div class="game-data-body">
+        <div class="data-line"><span>余牌</span><strong class="gold">${game.wallCount ?? 0}</strong></div>
+        <div class="data-line"><span>庄家</span><strong>${esc(dealer?.displayName || '—')}（东）</strong></div>
+        <div class="data-line"><span>你的风位</span><strong>${esc(ps.wind || '—')}家</strong></div>
+        <div class="data-line"><span>你的副露</span><strong>${(ps.melds || []).length} 副</strong></div>
+        <div class="data-line"><span>最近打出</span><strong>${game.lastDiscard ? `${esc(playerBySeat(room, game.lastDiscard.seat)?.displayName || '')} · ${esc(game.lastDiscard.tile?.short || '')}` : '—'}</strong></div>
+        <p class="data-note">胡牌 +3 分，其余三家各 -1 分；牌墙摸完流局。</p>
+      </div>
+    </section>`;
+  }
   return '';
 }
 
@@ -2159,7 +2579,9 @@ function resultLayer(room, result) {
     .join('、');
   const headline = result.headline || '本局结束';
   let title;
-  if (youWon) {
+  if (!winnerSeats.length) {
+    title = `<strong>${esc(headline)}</strong>`;
+  } else if (youWon) {
     title = isPaoYao(room)
       ? `你所在的<strong>${esc(teamLabel(room.you.seat % 2))}</strong>赢咗`
       : '你赢咗啦，<strong>好牌</strong>';
@@ -2188,7 +2610,11 @@ function resultLayer(room, result) {
               <span class="result-place">${entry.place}</span>
               <div class="result-name">
                 <strong>${esc(entry.playerName || '玩家')}${entry.seat === room.you.seat ? ' · 你' : ''}${entry.role ? ` <span class="result-role">${esc(entry.role)}</span>` : ''}</strong>
-                <span>剩 ${entry.cardsLeft} 张 · 本局 ${entry.points > 0 ? '+' : ''}${entry.points}</span>
+                <span>${
+                  entry.net !== undefined
+                    ? `${entry.label || `${entry.net} 筹码`} · ${entry.handName || (entry.folded ? '已弃牌' : '收池')}`
+                    : `剩 ${entry.cardsLeft} 张 · 本局 ${entry.points > 0 ? '+' : ''}${entry.points}`
+                }</span>
               </div>
               <span class="result-points ${entry.points >= 0 ? 'plus' : 'minus'}">${entry.points > 0 ? '+' : ''}${entry.points}</span>
               <span class="result-total">累计 ${entry.totalScore > 0 ? '+' : ''}${entry.totalScore}</span>
@@ -2276,6 +2702,73 @@ async function placeBid(value) {
     method: 'POST',
     body: { value: Number(value) },
   });
+}
+
+async function gameAction(type, payload = {}) {
+  const room = state.room;
+  if (!room || room.status !== 'playing') return null;
+  const data = await performRoomAction(`/api/rooms/${room.code}/action`, {
+    method: 'POST',
+    body: { type, payload },
+  });
+  if (data) {
+    state.ui.selected.clear();
+    state.ui.mjSelected = null;
+    state.ui.texasRaise = '';
+  }
+  return data;
+}
+
+async function texasAction(type) {
+  await gameAction(type);
+}
+
+function clampRaise(amount) {
+  const actions = state.room?.gamePublic?.availableActions;
+  if (!actions) return 0;
+  return Math.max(actions.minRaiseTo, Math.min(actions.maxRaiseTo, Math.round(Number(amount) || 0)));
+}
+
+async function texasRaiseWithAmount(amount) {
+  const value = clampRaise(amount);
+  if (!value) return;
+  await gameAction('raise', { amount: value });
+}
+
+async function texasRaiseFromInput() {
+  const input = $('[data-raise-input]');
+  await texasRaiseWithAmount(input?.value ?? state.ui.texasRaise);
+}
+
+async function texasRaiseQuick(mode) {
+  const game = state.room?.gamePublic;
+  const actions = game?.availableActions;
+  if (!actions) return;
+  const pot = game.pot || 0;
+  let amount = actions.minRaiseTo;
+  if (mode === 'half') amount = game.currentBet + Math.round(pot * 0.5);
+  else if (mode === 'pot') amount = game.currentBet + pot;
+  else if (mode === 'allin') amount = actions.maxRaiseTo;
+  await texasRaiseWithAmount(amount);
+}
+
+async function mahjongSelectTile(tileId) {
+  const game = state.room?.gamePublic;
+  if (!game || game.phase !== 'discard' || game.currentSeat !== state.room.you.seat) return;
+  state.ui.mjSelected = state.ui.mjSelected === tileId ? null : tileId;
+  renderRoom();
+}
+
+async function mahjongDiscard() {
+  if (!state.ui.mjSelected) {
+    toast('请先选择要打出的牌', 'error');
+    return;
+  }
+  await gameAction('discard', { tileId: state.ui.mjSelected });
+}
+
+async function mahjongClaim(type) {
+  await gameAction(type);
 }
 
 async function showHint() {
@@ -3024,7 +3517,7 @@ async function openRules() {
   if (games.length) {
     openModal({
       title: '纸牌屋玩法规则',
-      subtitle: '三款纸牌游戏 · 潇洒纸牌屋现行桌规',
+      subtitle: '五款纸牌游戏 · 潇洒纸牌屋现行桌规',
       wide: true,
       light: state.route.name === 'admin',
       body: `<div class="rules-hub">${games
@@ -3161,6 +3654,24 @@ function handleGlobalClick(event) {
     case 'bid':
       placeBid(trigger.dataset.value);
       break;
+    case 'texas-action':
+      texasAction(trigger.dataset.type);
+      break;
+    case 'texas-raise':
+      texasRaiseFromInput();
+      break;
+    case 'texas-raise-quick':
+      texasRaiseQuick(trigger.dataset.mode);
+      break;
+    case 'mahjong-tile':
+      mahjongSelectTile(trigger.dataset.tileId);
+      break;
+    case 'mahjong-discard':
+      mahjongDiscard();
+      break;
+    case 'mahjong-claim':
+      mahjongClaim(trigger.dataset.type);
+      break;
     case 'sort-hand':
       state.ui.handSort = state.ui.handSort === 'desc' ? 'asc' : 'desc';
       renderRoom();
@@ -3235,6 +3746,9 @@ function handleGlobalInput(event) {
   if (chatInput) {
     state.ui.chatDraft = chatInput.value;
     return;
+  }
+  if (event.target.matches?.('[data-raise-input]')) {
+    state.ui.texasRaise = event.target.value;
   }
 }
 

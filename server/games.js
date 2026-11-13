@@ -1,6 +1,8 @@
 import * as bigTwo from './game/bigTwo.js';
 import * as douDizhu from './game/douDizhu.js';
 import * as paoYao from './game/paoYao.js';
+import * as texasHoldem from './game/texasHoldem.js';
+import * as guangdongMahjong from './game/guangdongMahjong.js';
 
 const BIG_TWO_RULES = {
   summary: '先出完手牌者获胜；其余玩家按剩余手牌计分。',
@@ -100,6 +102,66 @@ const PAO_YAO_RULES = {
   ],
 };
 
+const TEXAS_RULES = {
+  summary: '单桌无限注德州扑克：两张底牌 + 五张公共牌，用下注与摊牌争夺底池。',
+  sections: [
+    {
+      title: '座位与盲注',
+      body: '支持 2–4 人。每人 1,000 筹码，小盲 10 / 大盲 20。庄家按钮每局顺时针移动；小盲、大盲依次投入盲注。',
+    },
+    {
+      title: '发牌与下注',
+      body: '每人发 2 张底牌，桌面依次发出翻牌 3 张、转牌 1 张、河牌 1 张。翻牌前从大盲下家开始行动，翻牌后从庄家下家开始。',
+    },
+    {
+      title: '可用操作',
+      body: '弃牌、过牌、跟注、加注，或用全部剩余筹码全下。大盲在翻牌前即使无人加注也有最后行动权。',
+    },
+    {
+      title: '牌型大小',
+      body: '高牌 < 一对 < 两对 < 三条 < 顺子 < 同花 < 葫芦 < 四条 < 同花顺。A 可作最大或组成 A-2-3-4-5 最小顺。',
+    },
+    {
+      title: '摊牌与底池',
+      body: '河牌下注结束后进入摊牌；若全下则直接补齐公共牌。支持边池，弃牌玩家已投入的筹码留在底池中。',
+    },
+    {
+      title: '计分',
+      body: '本会馆按单局结算，每 10 筹码折算 1 个房间积分；剩余筹码最多者为本局第一。庄家按钮与起始座位会在下一局轮转。',
+    },
+  ],
+};
+
+const MAHJONG_RULES = {
+  summary: '四人广东麻将（136 张，无花牌）：摸打、吃碰杠，凑成四副面子加一对将或七对即可胡牌。',
+  sections: [
+    {
+      title: '牌张与座位',
+      body: '万 / 条 / 筒 1–9 各 4 张，东南西北中发白各 4 张，共 136 张，不含花牌。四人固定入座，庄家 14 张，其余 13 张。',
+    },
+    {
+      title: '行牌流程',
+      body: '庄家先出牌；之后每人摸一张、打一张。可以吃、碰、杠或胡别人打出的牌。吃只能由下家进行。',
+    },
+    {
+      title: '胡牌条件',
+      body: '标准四面子一将；或十四张组成七个对子（七对）。支持自摸胡与点炮胡。牌墙摸完则流局。',
+    },
+    {
+      title: '鸣牌优先级',
+      body: '胡 > 杠/碰 > 吃。胡牌立即结束；杠后补摸一张；碰、吃后由鸣牌者出牌。',
+    },
+    {
+      title: '计分',
+      body: '本会馆采用简化鸡平胡：胡牌者 +3 分，其余三家各 -1 分；自摸与点炮同积分。七对仅作为胡牌牌型展示，暂不另加番。',
+    },
+    {
+      title: '本馆规则',
+      body: '仅开放明杠；不设暗杠、抢杠、十三幺、花牌与复杂番数。牌墙摸完后流局，按 0 分结算，庄家轮转。',
+    },
+  ],
+};
+
 export const GAME_REGISTRY = [
   {
     id: 'big-two',
@@ -136,6 +198,30 @@ export const GAME_REGISTRY = [
     enabled: true,
     accent: 'rose',
     rules: PAO_YAO_RULES,
+  },
+  {
+    id: 'texas-holdem',
+    name: '德州扑克',
+    englishName: "Texas Hold'em",
+    tagline: '2–4 人 · 无限注单桌',
+    description: '盲注、底牌、公共牌与下注轮，摊牌争夺底池，支持全下与边池。',
+    minPlayers: 2,
+    maxPlayers: 4,
+    enabled: true,
+    accent: 'ocean',
+    rules: TEXAS_RULES,
+  },
+  {
+    id: 'guangdong-mahjong',
+    name: '广东麻将',
+    englishName: 'Guangdong Mahjong',
+    tagline: '四人 · 136 张 · 鸡平胡',
+    description: '摸打吃碰杠，四面子一将或七对胡牌，自摸与点炮均可。',
+    minPlayers: 4,
+    maxPlayers: 4,
+    enabled: true,
+    accent: 'berry',
+    rules: MAHJONG_RULES,
   },
 ];
 
@@ -198,6 +284,42 @@ const ENGINE_ADAPTERS = {
       return `第 ${room.roundNumber} 局开始，红队对蓝队，${starter} 先出牌`;
     },
   },
+  'texas-holdem': {
+    create({ playerCount, roundNumber, starterSeat }) {
+      return texasHoldem.createGame(playerCount, roundNumber, { starterSeat });
+    },
+    action: texasHoldem.act,
+    botAction: texasHoldem.botAction,
+    getActingSeat: (game) => (game.status === 'playing' ? game.currentSeat : null),
+    getHand: texasHoldem.getHand,
+    getPublic: (game, seat) => texasHoldem.getPublicGame(game, seat),
+    getHint: () => null,
+    bid: null,
+    botBid: null,
+    isBidding: () => false,
+    startText(room, game) {
+      const dealer = room.players[game.dealerSeat]?.displayName || '玩家';
+      return `第 ${room.roundNumber} 手开始，${dealer} 是庄家，盲注 10 / 20`;
+    },
+  },
+  'guangdong-mahjong': {
+    create({ playerCount, roundNumber, starterSeat }) {
+      return guangdongMahjong.createGame(playerCount, roundNumber, { starterSeat });
+    },
+    action: guangdongMahjong.act,
+    botAction: guangdongMahjong.botAction,
+    getActingSeat: guangdongMahjong.getActingSeat,
+    getHand: guangdongMahjong.getHand,
+    getPublic: (game, seat) => guangdongMahjong.getPublicGame(game, seat),
+    getHint: () => null,
+    bid: null,
+    botBid: null,
+    isBidding: () => false,
+    startText(room, game) {
+      const dealer = room.players[game.dealerSeat]?.displayName || '玩家';
+      return `第 ${room.roundNumber} 局开始，${dealer} 坐庄（东），先摸打`;
+    },
+  },
 };
 
 export function getEngine(gameType) {
@@ -212,4 +334,10 @@ export function formatCards(combo) {
     .join(' ');
 }
 
-export { BIG_TWO_RULES, DOU_DIZHU_RULES, PAO_YAO_RULES };
+export {
+  BIG_TWO_RULES,
+  DOU_DIZHU_RULES,
+  PAO_YAO_RULES,
+  TEXAS_RULES,
+  MAHJONG_RULES,
+};

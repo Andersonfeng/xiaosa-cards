@@ -2,7 +2,7 @@
   "name": "xiaosa-card-house",
   "version": "1.0.0",
   "private": true,
-  "description": "「潇洒纸牌屋」— 带管理后台与实时房间的 Web 纸牌游戏平台，内置锄大地、斗地主、东北刨幺",
+  "description": "「潇洒纸牌屋」— 带管理后台与实时房间的 Web 纸牌游戏平台，内置锄大地、斗地主、东北刨幺、德州扑克、广东麻将",
   "type": "module",
   "engines": {
     "node": ">=22.13"
